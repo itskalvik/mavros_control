@@ -1,0 +1,14 @@
+/**/mavros/**:
+  ros__parameters:
+    plugin_denylist:
+      # common
+      - '*'
+
+    plugin_allowlist:
+      - 'sys_*'
+      - 'setpoint_position'
+      - 'distance_sensor'
+      - 'global_position'
+      - 'imu'
+      - 'command'
+      - 'local_position'
