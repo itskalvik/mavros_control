@@ -21,7 +21,6 @@ setup(
     maintainer_email='itskalvik@gmail.com',
     description='A ROS2 package for controlling ArduPilot-based robots',
     license='Apache-2.0',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'waypoint_path_follower = mavros_control.waypoint_path_follower:main',
