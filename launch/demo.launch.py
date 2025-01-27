@@ -31,12 +31,13 @@ def generate_launch_description():
                         IncludeLaunchDescription(
                             XMLLaunchDescriptionSource([
                                 PathJoinSubstitution([
-                                    FindPackageShare('ros_sgp_tools'),
+                                    FindPackageShare('mavros_control'),
                                     'launch',
                                     'mavros.launch'
                                 ])
                             ]),
                             launch_arguments={
+                                "fcu_url": "udp://0.0.0.0:14550@"
                             }.items()
                         ),
                     ]
