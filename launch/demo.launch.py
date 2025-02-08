@@ -1,3 +1,4 @@
+import os
 from launch_ros.actions import Node
 from launch import LaunchDescription
 from launch_ros.actions import PushRosNamespace
@@ -6,6 +7,12 @@ from launch_ros.substitutions import FindPackageShare
 from launch.actions import GroupAction, IncludeLaunchDescription
 from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
 
+
+def get_var(var, default):
+    try:
+        return os.environ[var]
+    except:
+        return default
 
 def generate_launch_description():
     namespace = 'robot_0'
@@ -23,6 +30,7 @@ def generate_launch_description():
                          ])
     nodes.append(path_follower)
 
+    # MAVROS
     mavros = GroupAction(
                     actions=[
                         # push_ros_namespace to set namespace of included nodes
@@ -43,5 +51,24 @@ def generate_launch_description():
                     ]
                 )
     nodes.append(mavros) 
+
+    # Foxglove (web-based rviz)
+    foxglove = GroupAction(
+                    actions=[
+                        # push_ros_namespace to set namespace of included nodes
+                        PushRosNamespace(namespace),
+                        # Foxglove
+                        IncludeLaunchDescription(
+                            XMLLaunchDescriptionSource([
+                                PathJoinSubstitution([
+                                    FindPackageShare('foxglove_bridge'),
+                                    'launch',
+                                    'foxglove_bridge_launch.xml'
+                                ])
+                            ]),
+                        )
+                    ]
+                )
+    nodes.append(foxglove)
 
     return LaunchDescription(nodes)
