@@ -1,4 +1,4 @@
-/**/mavros/**:
+/**:
   ros__parameters:
     plugin_denylist:
       # common
@@ -6,9 +6,10 @@
 
     plugin_allowlist:
       - 'sys_*'
-      - 'setpoint_position'
+      - 'imu'
+      - 'rc_io'
+      - 'command'
       - 'distance_sensor'
       - 'global_position'
-      - 'imu'
-      - 'command'
       - 'local_position'
+      - 'setpoint_position'

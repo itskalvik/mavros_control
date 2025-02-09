@@ -26,6 +26,7 @@ def generate_launch_description():
                               {'xy_tolerance': 0.7,
                                'z_tolerance': 0.3,
                                'use_altitude': False,
+                               'navigation_type': 0,
                               }
                          ])
     nodes.append(path_follower)

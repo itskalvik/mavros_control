@@ -2,10 +2,10 @@
 
 from mavros_msgs.srv import SetMode, CommandBool, CommandHome, CommandTOL
 from rcl_interfaces.msg import ParameterDescriptor
+from mavros_msgs.msg import State, OverrideRCIn
 from geographic_msgs.msg import GeoPoseStamped
 from pygeodesy.geoids import GeoidPGM
 from sensor_msgs.msg import NavSatFix
-from mavros_msgs.msg import State
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 import rclpy
@@ -25,20 +25,45 @@ class WaypointPathFollower(Node):
         super().__init__('WaypointPathFollower')
         self.get_logger().info('Initializing')
 
-        description = ParameterDescriptor(description='XY-axis distance tolerance used to determine if a waypoint is reached')
+        # Declare and get parameters
+        description = ParameterDescriptor(description='XY-axis distance (meters) tolerance used to \
+                                          determine if a waypoint is reached')
         self.declare_parameter('xy_tolerance', 0.7, description)
         self.xy_tolerance = self.get_parameter('xy_tolerance').get_parameter_value().double_value
         self.get_logger().info(f'xy_tolerance: {self.xy_tolerance}')
 
-        description = ParameterDescriptor(description='Z-axis distance tolerance used to determine if a waypoint is reached')
+        description = ParameterDescriptor(description='Z-axis distance (meters) tolerance used to \
+                                          determine if a waypoint is reached')
         self.declare_parameter('z_tolerance', 0.3, description)
         self.z_tolerance = self.get_parameter('z_tolerance').get_parameter_value().double_value
         self.get_logger().info(f'z_tolerance: {self.z_tolerance}')
 
-        description = ParameterDescriptor(description='If ```True```, 3D waypoints are used for the path')
+        description = ParameterDescriptor(description='If True 3D waypoints are used for the path')
         self.declare_parameter('use_altitude', False, description)
         self.use_altitude = self.get_parameter('use_altitude').get_parameter_value().bool_value
-        self.get_logger().info(f'use_altitude: {self.use_altitude}')
+        self.get_logger().info(f'use_altitude: {self.use_altitude}')\
+        
+        description = ParameterDescriptor(description='\
+                                          If 0 (default): Use global position based navigation (GPS-based).\n\
+                                          If 1 Use raw rc controls for navigation.')
+        self.declare_parameter('navigation_type', 0, description)
+        self.navigation_type = self.get_parameter('navigation_type').get_parameter_value().integer_value
+        navigation_str = "GPS-based" if self.navigation_type==0 else "RC-control"
+        self.get_logger().info(f'navigation_type: {navigation_str}')
+
+        # Initialize variables
+        self.vehicle_state = State()
+        self.arm_request = CommandBool.Request()
+        self.set_mode_request = SetMode.Request()
+        self.vehicle_position = np.array([0., 0., 0.])
+        self.velocity = 0.01
+        self.velocity_buffer = deque([0.01])
+        self.waypoint_distance = -1
+        if self.navigation_type==0:
+            self.setpoint_position = GeoPoseStamped()
+        elif self.navigation_type==1:
+            self.rc_override = OverrideRCIn()
+            self.rc_override.channels = [0]*18
 
         # Create QoS profiles
         # STATE_QOS used for state topics, like ~/state, ~/mission/waypoints etc.
@@ -52,17 +77,22 @@ class WaypointPathFollower(Node):
         # Create subscribers
         self.vehicle_state_subscriber = self.create_subscription(
             State, 'mavros/state', self.vehicle_state_callback, STATE_QOS)
-        self.vehicle_pose_subscriber = self.create_subscription(
-            NavSatFix, 'mavros/global_position/global', 
-            self.vehicle_position_callback, SENSOR_QOS)
         self.vehicle_odom_subscriber = self.create_subscription(
             Odometry, 'mavros/local_position/odom',
             self.vehicle_odom_callback, SENSOR_QOS)
+        if self.navigation_type==0: # Global navigation
+            self.vehicle_pose_subscriber = self.create_subscription(
+                NavSatFix, 'mavros/global_position/global', 
+                self.global_position_callback, SENSOR_QOS)
 
         # Create publishers
-        self.setpoint_position_publisher = self.create_publisher(
-            GeoPoseStamped, 'mavros/setpoint_position/global', SENSOR_QOS)
-
+        if self.navigation_type==0: # Global navigation
+            self.setpoint_position_publisher = self.create_publisher(
+                GeoPoseStamped, 'mavros/setpoint_position/global', SENSOR_QOS)
+        elif self.navigation_type==1: # RC control
+            self.rc_override_publisher = self.create_publisher(
+                OverrideRCIn, 'mavros/rc/override', STATE_QOS)
+        
         # Create service clients
         self.set_mode_client = self.create_client(SetMode, 'mavros/set_mode')
         while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
@@ -74,18 +104,13 @@ class WaypointPathFollower(Node):
             self.get_logger().info('Arming service not available, waiting again...')
         self.get_logger().info('Arming service available')
 
-        # Initialize variables
-        self.vehicle_state = State()
-        self.arm_request = CommandBool.Request()
-        self.set_mode_request = SetMode.Request()
-        self.setpoint_position = GeoPoseStamped()
-        self.vehicle_position = np.array([0., 0., 0.])
-        self.velocity = 0.01
-        self.velocity_buffer = deque([0.01])
-        self.waypoint_distance = -1
-
         # Wait to get the state of the vehicle
         rclpy.spin_once(self, timeout_sec=5.0)
+
+        if self.navigation_type==0:
+            self.guided_mission()
+        else:
+            self.manual_mission()
 
     def haversine(self, pt1, pt2):
         """
@@ -137,14 +162,14 @@ class WaypointPathFollower(Node):
         """Callback function for vehicle_state topic subscriber."""
         self.vehicle_state = vehicle_state
 
-    def vehicle_position_callback(self, position):
+    def global_position_callback(self, msg):
         """Callback function for vehicle position topic subscriber."""
-        self.vehicle_position[0] = position.latitude
-        self.vehicle_position[1] = position.longitude
+        self.vehicle_position[0] = msg.latitude
+        self.vehicle_position[1] = msg.longitude
 
         # Offset to convert ellipsoid to AMSL height
         offset = _egm96.height(self.vehicle_position[0], self.vehicle_position[1])
-        self.vehicle_position[2] = position.altitude-offset
+        self.vehicle_position[2] = msg.altitude-offset
 
     def arm(self, state=True, timeout=30):
         """Arm/Disarm the vehicle"""
@@ -266,7 +291,14 @@ class WaypointPathFollower(Node):
         return True
     
     def go2waypoint(self, waypoint, timeout=900):
-        """Go to waypoint (latitude, longitude) when in GUIDED mode and armed"""
+        """
+        Go to waypoint when in GUIDED mode and armed
+
+        Args:
+            waypoint (list): [latitude, longitude, altitude (optional)]
+            timeout (double): Maximum amount of time to wait to reach the given waypoint
+        """
+
         self.setpoint_position.pose.position.latitude = waypoint[0]
         self.setpoint_position.pose.position.longitude = waypoint[1]
         if self.use_altitude:
@@ -295,7 +327,43 @@ class WaypointPathFollower(Node):
 
         return True
 
-    def mission(self):
+    def normalize(self, x, inmin=-1, inmax=1, outmin=1100, outmax=1900):
+        # Function to map input range to output range
+        return round((x - inmin) * (outmax - outmin) / (inmax - inmin) + outmin)
+    
+    def pub_rc_override(self, cmd, timeout=0.01):
+        """
+        Publishes rc messages, assumes MANUAL/STABILIZE/ALT_HOLD mode and armed
+
+        Args:
+            cmd (list): [Forward, Lateral, Throttle (Up/Down), Roll, Pitch, Yaw];
+                        Input range: [-1.0, 1.0]
+            timeout (double): Amount of time in seconds to publish the command message
+        """
+
+        # Forward
+        self.rc_override.channels[4] = self.normalize(cmd[0])
+        # Lateral
+        self.rc_override.channels[5] = self.normalize(cmd[1])
+        # Throttle (Up/Down)
+        self.rc_override.channels[2] = self.normalize(cmd[2])
+        # Roll
+        self.rc_override.channels[1] = self.normalize(cmd[3])
+        # Pitch
+        self.rc_override.channels[0] = self.normalize(cmd[4])
+        # Yaw
+        self.rc_override.channels[3] = self.normalize(cmd[5])
+
+        # Publish the message
+        self.rc_override_publisher.publish(self.rc_override)
+        start_time = self.get_clock().now().to_msg().sec
+        while self.get_clock().now().to_msg().sec - start_time < timeout:
+            rclpy.spin_once(self, timeout_sec=0.01)
+            self.rc_override_publisher.publish(self.rc_override)
+
+        return True
+        
+    def guided_mission(self):
         """GUIDED mission"""
         mission_altitude = self.vehicle_position[2]
 
@@ -313,20 +381,28 @@ class WaypointPathFollower(Node):
             self.get_logger().info('Home position set')
 
         if self.use_altitude:
-            if self.tol_command(mission_altitude+20.0):
+            if self.tol_command(mission_altitude):
                 self.get_logger().info('Takeoff complete')
 
-        self.get_logger().info('Visiting waypoint 1')
-        if self.go2waypoint([self.vehicle_position[0]+(10/111111), 
-                             self.vehicle_position[1]+(10/111111), 
-                             mission_altitude+20.0]):
-            self.get_logger().info('Reached waypoint 1')
-
-        self.get_logger().info('Visiting waypoint 2')
-        if self.go2waypoint([self.vehicle_position[0]+(10/111111), 
-                             self.vehicle_position[1]-(10/111111), 
-                             mission_altitude+25.0]):
-            self.get_logger().info('Reached waypoint 2')
+        self.get_logger().info('Moving 10m to the right')
+        self.go2waypoint([self.vehicle_position[0], 
+                          self.vehicle_position[1]+(10/111111), 
+                          mission_altitude])
+        
+        self.get_logger().info('Moving 10m forward')
+        self.go2waypoint([self.vehicle_position[0]+(10/111111), 
+                          self.vehicle_position[1], 
+                          mission_altitude])
+        
+        self.get_logger().info('Moving 10m to the left')
+        self.go2waypoint([self.vehicle_position[0], 
+                          self.vehicle_position[1]-(10/111111), 
+                          mission_altitude])
+        
+        self.get_logger().info('Moving 10m backward')
+        self.go2waypoint([self.vehicle_position[0]-(10/111111), 
+                          self.vehicle_position[1], 
+                          mission_altitude])
 
         if self.use_altitude:
             if self.tol_command(mission_altitude):
@@ -336,13 +412,75 @@ class WaypointPathFollower(Node):
         if self.arm(False):
             self.get_logger().info('Disarmed')
 
+    def manual_mission(self):
+        """MANUAL mission"""
+        mission_altitude = self.vehicle_position[2]
+
+        self.get_logger().info('Engaging MANUAL mode')
+        # ArduSub internally used ALT_HOLD for DEPTH_HOLD
+        if self.engage_mode('MANUAL'):
+            self.get_logger().info('MANUAL mode Engaged')
+
+        self.get_logger().info('Arming')
+        if self.arm(True):
+            self.get_logger().info('Armed')
+
+        if self.use_altitude:
+            if self.tol_command(mission_altitude+20.0):
+                self.get_logger().info('Takeoff complete')
+
+        self.get_logger().info('Moving Down')
+        self.pub_rc_override([0, 0, -1.0, 0, 0, 0], timeout=3)
+
+        self.get_logger().info('Roll Right')
+        self.pub_rc_override([0, 0, 0, 5.0, 0, 0], timeout=3)
+
+        self.get_logger().info('Roll Left')
+        self.pub_rc_override([0, 0, 0, -5.0, 0, 0], timeout=3)
+
+        self.get_logger().info('Pitch Up')
+        self.pub_rc_override([0, 0, 0, 0, 5.0, 0], timeout=3)
+
+        self.get_logger().info('Pitch Down')
+        self.pub_rc_override([0, 0, 0, 0, -5.0, 0], timeout=3)
+
+        self.get_logger().info('Yaw Right')
+        self.pub_rc_override([0, 0, 0, 0, 0, 0.25], timeout=3)
+
+        self.get_logger().info('Yaw Left')
+        self.pub_rc_override([0, 0, 0, 0, 0, -0.25], timeout=3)
+
+        self.get_logger().info('Moving Forward')
+        self.pub_rc_override([0.5, 0, 0, 0, 0, 0], timeout=3)
+
+        self.get_logger().info('Moving Backward')
+        self.pub_rc_override([-0.5, 0, 0, 0, 0, 0], timeout=3)
+
+        self.get_logger().info('Moving Left')
+        self.pub_rc_override([0, 0.5, 0, 0, 0, 0], timeout=3)
+
+        self.get_logger().info('Moving Right')
+        self.pub_rc_override([0.0, -0.5, 0, 0, 0, 0], timeout=3)
+
+        self.get_logger().info('Moving Down')
+        self.pub_rc_override([0, 0, -0.5, 0, 0, 0], timeout=3)
+
+        self.get_logger().info('Moving Up')
+        self.pub_rc_override([0, 0, 0.5, 0, 0, 0], timeout=3)
+
+        if self.use_altitude:
+            if self.tol_command(mission_altitude):
+                self.get_logger().info('Landing complete')
+
+        self.get_logger().info('Disarming')
+        if self.arm(False):
+            self.get_logger().info('Disarmed')
 
 def main(args=None):
     rclpy.init(args=args)
 
     path_follower = WaypointPathFollower()
     rclpy.spin_once(path_follower)
-    path_follower.mission()
 
 
 if __name__ == '__main__':
