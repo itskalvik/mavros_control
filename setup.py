@@ -22,7 +22,7 @@ setup(
     license='Apache-2.0',
     entry_points={
         'console_scripts': [
-            'waypoint_path_follower = mavros_control.waypoint_path_follower:main',
+            'controller = mavros_control.controller:main',
         ],
     },
 )

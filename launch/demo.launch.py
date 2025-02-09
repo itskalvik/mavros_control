@@ -15,21 +15,20 @@ def get_var(var, default):
         return default
 
 def generate_launch_description():
-    namespace = 'robot_0'
+    namespace = ''
     nodes = []
 
-    path_follower = Node(package='mavros_control',
-                         executable='waypoint_path_follower',
-                         namespace=namespace,
-                         name='WaypointPathFollower',
-                         parameters=[
-                              {'xy_tolerance': 0.7,
-                               'z_tolerance': 0.3,
-                               'use_altitude': False,
-                               'navigation_type': 0,
-                              }
-                         ])
-    nodes.append(path_follower)
+    controller = Node(package='mavros_control',
+                      executable='controller',
+                      namespace=namespace,
+                      name='controller',
+                      parameters=[
+                        {'xy_tolerance': 0.7,
+                         'z_tolerance': 0.3,
+                         'use_altitude': False,
+                         'navigation_type': 1,
+                        }])
+    nodes.append(controller)
 
     # MAVROS
     mavros = GroupAction(

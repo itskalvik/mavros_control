@@ -16,7 +16,7 @@ from collections import deque
 _egm96 = GeoidPGM('/usr/share/GeographicLib/geoids/egm96-5.pgm', kind=-3)
 
 
-class WaypointPathFollower(Node):
+class Controller(Node):
 
     def __init__(self):
         '''
@@ -107,10 +107,11 @@ class WaypointPathFollower(Node):
         # Wait to get the state of the vehicle
         rclpy.spin_once(self, timeout_sec=5.0)
 
+        # Start mission
         if self.navigation_type==0:
             self.guided_mission()
         else:
-            self.manual_mission()
+            self.rc_control_mission()
 
     def haversine(self, pt1, pt2):
         """
@@ -364,7 +365,7 @@ class WaypointPathFollower(Node):
         return True
         
     def guided_mission(self):
-        """GUIDED mission"""
+        """Valid flight modes: GUIDED"""
         mission_altitude = self.vehicle_position[2]
 
         self.get_logger().info('Engaging GUIDED mode')
@@ -412,8 +413,8 @@ class WaypointPathFollower(Node):
         if self.arm(False):
             self.get_logger().info('Disarmed')
 
-    def manual_mission(self):
-        """MANUAL mission"""
+    def rc_control_mission(self):
+        """Valid flight modes: MANUAL, STABILITY, ALT_HOLD"""
         mission_altitude = self.vehicle_position[2]
 
         self.get_logger().info('Engaging MANUAL mode')
@@ -456,11 +457,11 @@ class WaypointPathFollower(Node):
         self.get_logger().info('Moving Backward')
         self.pub_rc_override([-0.5, 0, 0, 0, 0, 0], timeout=3)
 
-        self.get_logger().info('Moving Left')
-        self.pub_rc_override([0, 0.5, 0, 0, 0, 0], timeout=3)
-
         self.get_logger().info('Moving Right')
-        self.pub_rc_override([0.0, -0.5, 0, 0, 0, 0], timeout=3)
+        self.pub_rc_override([0.0, 0.5, 0, 0, 0, 0], timeout=3)
+        
+        self.get_logger().info('Moving Left')
+        self.pub_rc_override([0, -0.5, 0, 0, 0, 0], timeout=3)
 
         self.get_logger().info('Moving Down')
         self.pub_rc_override([0, 0, -0.5, 0, 0, 0], timeout=3)
@@ -479,8 +480,8 @@ class WaypointPathFollower(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    path_follower = WaypointPathFollower()
-    rclpy.spin_once(path_follower)
+    node = Controller()
+    rclpy.spin_once(node)
 
 
 if __name__ == '__main__':
