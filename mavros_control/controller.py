@@ -45,7 +45,7 @@ class Controller(Node):
         
         description = ParameterDescriptor(description='\
                                           If 0 (default): Use global position based navigation (GPS-based).\n\
-                                          If 1 Use raw rc controls for navigation.')
+                                          If 1: Use raw rc controls for navigation.')
         self.declare_parameter('navigation_type', 0, description)
         self.navigation_type = self.get_parameter('navigation_type').get_parameter_value().integer_value
         navigation_str = "GPS-based" if self.navigation_type==0 else "RC-control"

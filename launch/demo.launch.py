@@ -16,6 +16,7 @@ def get_var(var, default):
 
 def generate_launch_description():
     namespace = ''
+    navigation_type = int(get_var('NAVIGATION_TYPE', 0))
     nodes = []
 
     controller = Node(package='mavros_control',
@@ -26,7 +27,7 @@ def generate_launch_description():
                         {'xy_tolerance': 0.7,
                          'z_tolerance': 0.3,
                          'use_altitude': False,
-                         'navigation_type': 1,
+                         'navigation_type': navigation_type,
                         }])
     nodes.append(controller)
 
