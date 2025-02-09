@@ -8,6 +8,7 @@
       - 'sys_*'
       - 'imu'
       - 'rc_io'
+      - 'param'
       - 'command'
       - 'distance_sensor'
       - 'global_position'
