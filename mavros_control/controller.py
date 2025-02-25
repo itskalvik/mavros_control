@@ -1,12 +1,14 @@
 #! /usr/bin/env python3
 
 from mavros_msgs.srv import SetMode, CommandBool, CommandHome, CommandTOL
+from tf_transformations import euler_from_quaternion
 from rcl_interfaces.msg import ParameterDescriptor
 from mavros_msgs.msg import State, OverrideRCIn
 from geographic_msgs.msg import GeoPoseStamped
 from pygeodesy.geoids import GeoidPGM
 from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu
 from rclpy.node import Node
 import rclpy
 
@@ -45,7 +47,7 @@ class Controller(Node):
         
         description = ParameterDescriptor(description='\
                                           If 0 (default): Use global position based navigation (GPS-based).\n\
-                                          If 1: Use raw rc controls for navigation.')
+                                          If 1 Use raw rc controls for navigation.')
         self.declare_parameter('navigation_type', 0, description)
         self.navigation_type = self.get_parameter('navigation_type').get_parameter_value().integer_value
         navigation_str = "GPS-based" if self.navigation_type==0 else "RC-control"
@@ -77,14 +79,18 @@ class Controller(Node):
         # Create subscribers
         self.vehicle_state_subscriber = self.create_subscription(
             State, 'mavros/state', self.vehicle_state_callback, STATE_QOS)
-        self.vehicle_odom_subscriber = self.create_subscription(
-            Odometry, 'mavros/local_position/odom',
-            self.vehicle_odom_callback, SENSOR_QOS)
         if self.navigation_type==0: # Global navigation
             self.vehicle_pose_subscriber = self.create_subscription(
                 NavSatFix, 'mavros/global_position/global', 
                 self.global_position_callback, SENSOR_QOS)
-
+            self.vehicle_odom_subscriber = self.create_subscription(
+                Odometry, 'mavros/local_position/odom',
+                self.vehicle_odom_callback, SENSOR_QOS)
+        elif self.navigation_type==1: # RC control
+            self.vehicle_odom_subscriber = self.create_subscription(
+                Imu, 'mavros/imu/data', 
+                self.vehicle_odom_callback, SENSOR_QOS)
+            
         # Create publishers
         if self.navigation_type==0: # Global navigation
             self.setpoint_position_publisher = self.create_publisher(
@@ -147,17 +153,32 @@ class Controller(Node):
         else:
             return False
         
+    def quaternion2rpy(self, orientation):
+        orientation_list = [orientation.x, 
+                            orientation.y, 
+                            orientation.z, 
+                            orientation.w]
+        return euler_from_quaternion(orientation_list)
+        
     def vehicle_odom_callback(self, msg):
         """Callback function for vehicle odom topic subscriber.
         Also computes the nominal linear velocity
         """
-        velocity = np.hypot(msg.twist.twist.linear.x,
-                            msg.twist.twist.linear.y)
+        if self.navigation_type==0:
+            heading_velocity = np.hypot(msg.twist.twist.linear.x,
+                                        msg.twist.twist.linear.y)
+            self.vehicle_orientation = self.quaternion2rpy(msg.pose.pose.orientation)
+        elif self.navigation_type==1:
+            heading_velocity = np.hypot(msg.linear_acceleration.x,
+                                        msg.linear_acceleration.y)
+            self.vehicle_orientation = self.quaternion2rpy(msg.orientation)
+
+        # Maintain ring buffer to compute heading velocity
         if len(self.velocity_buffer) > 50:
             self.velocity_buffer.popleft()
-        if velocity > 0.2:
-            self.velocity_buffer.append(velocity)
-        self.velocity = np.mean(self.velocity_buffer)
+        self.velocity_buffer.append(heading_velocity)
+
+        self.heading_velocity = np.mean(self.velocity_buffer)
 
     def vehicle_state_callback(self, vehicle_state):
         """Callback function for vehicle_state topic subscriber."""
