@@ -20,7 +20,12 @@ _egm96 = GeoidPGM('/usr/share/GeographicLib/geoids/egm96-5.pgm', kind=-3)
 
 class Controller(Node):
 
-    def __init__(self):
+    def __init__(self,
+                 xy_tolerance=0.7,
+                 z_tolerance=0.3,
+                 use_altitude=False,
+                 navigation_type=0,
+                 start_mission=True):
         '''
         MAVROS waypoint path follower
         '''
@@ -30,30 +35,31 @@ class Controller(Node):
         # Declare and get parameters
         description = ParameterDescriptor(description='XY-axis distance (meters) tolerance used to \
                                           determine if a waypoint is reached')
-        self.declare_parameter('xy_tolerance', 0.7, description)
+        self.declare_parameter('xy_tolerance', xy_tolerance, description)
         self.xy_tolerance = self.get_parameter('xy_tolerance').get_parameter_value().double_value
         self.get_logger().info(f'xy_tolerance: {self.xy_tolerance}')
 
         description = ParameterDescriptor(description='Z-axis distance (meters) tolerance used to \
                                           determine if a waypoint is reached')
-        self.declare_parameter('z_tolerance', 0.3, description)
+        self.declare_parameter('z_tolerance', z_tolerance, description)
         self.z_tolerance = self.get_parameter('z_tolerance').get_parameter_value().double_value
         self.get_logger().info(f'z_tolerance: {self.z_tolerance}')
 
         description = ParameterDescriptor(description='If True 3D waypoints are used for the path')
-        self.declare_parameter('use_altitude', False, description)
+        self.declare_parameter('use_altitude', use_altitude, description)
         self.use_altitude = self.get_parameter('use_altitude').get_parameter_value().bool_value
         self.get_logger().info(f'use_altitude: {self.use_altitude}')\
         
         description = ParameterDescriptor(description='\
                                           If 0 (default): Use global position based navigation (GPS-based).\n\
                                           If 1 Use raw rc controls for navigation.')
-        self.declare_parameter('navigation_type', 0, description)
+        self.declare_parameter('navigation_type', navigation_type, description)
         self.navigation_type = self.get_parameter('navigation_type').get_parameter_value().integer_value
         navigation_str = "GPS-based" if self.navigation_type==0 else "RC-control"
         self.get_logger().info(f'navigation_type: {navigation_str}')
 
         # Initialize variables
+        self.vehicle_orientation = None
         self.vehicle_state = State()
         self.arm_request = CommandBool.Request()
         self.set_mode_request = SetMode.Request()
@@ -114,10 +120,11 @@ class Controller(Node):
         rclpy.spin_once(self, timeout_sec=5.0)
 
         # Start mission
-        if self.navigation_type==0:
-            self.guided_mission()
-        else:
-            self.rc_control_mission()
+        if start_mission:
+            if self.navigation_type==0:
+                self.guided_mission()
+            else:
+                self.rc_control_mission()
 
     def haversine(self, pt1, pt2):
         """
