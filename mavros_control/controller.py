@@ -24,7 +24,7 @@ class Controller(Node):
         '''
         MAVROS waypoint path follower
         '''
-        super().__init__('WaypointPathFollower')
+        super().__init__('mavros_controller')
         self.get_logger().info('Initializing')
 
         # Declare and get parameters
