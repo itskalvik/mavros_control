@@ -64,7 +64,7 @@ class Controller(Node):
         self.arm_request = CommandBool.Request()
         self.set_mode_request = SetMode.Request()
         self.vehicle_position = np.array([0., 0., 0.])
-        self.velocity = 0.01
+        self.heading_velocity = 0.01
         self.velocity_buffer = deque([0.01])
         self.waypoint_distance = -1
         if self.navigation_type==0:
