@@ -341,6 +341,9 @@ class Controller(Node):
         # Yaw
         self.rc_override.channels[3] = self.normalize(cmd[5])
 
+        if len(cmd) > 6:
+            self.rc_override.channels[6:] = cmd[6:]
+
         # Publish the message
         self.rc_override_publisher.publish(self.rc_override)
         start_time = self.get_clock().now().to_msg().sec
