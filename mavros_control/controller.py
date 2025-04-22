@@ -64,8 +64,9 @@ class Controller(Node):
         self.arm_request = CommandBool.Request()
         self.set_mode_request = SetMode.Request()
         self.vehicle_position = np.array([0., 0., 0.])
-        self.heading_velocity = 0.01
-        self.velocity_buffer = deque([0.01])
+        self.vehicle_linear = np.array([0., 0., 0.])
+        self.heading_change = 0.01
+        self.heading_buffer = deque([0.01])
         self.waypoint_distance = -1
         if self.navigation_type==0:
             self.setpoint_position = GeoPoseStamped()
@@ -168,24 +169,32 @@ class Controller(Node):
         return euler_from_quaternion(orientation_list)
         
     def vehicle_odom_callback(self, msg):
-        """Callback function for vehicle odom topic subscriber.
-        Also computes the nominal linear velocity
+        """Callback function for vehicle odom topic subscriber
+            - Populates the vehicle orientation
+            - Computes the nominal heading and linear
+                For navigation_type==0 -> velocity
+                For navigation_type==1 -> acceleration
         """
         if self.navigation_type==0:
-            heading_velocity = np.hypot(msg.twist.twist.linear.x,
-                                        msg.twist.twist.linear.y)
             self.vehicle_orientation = self.quaternion2rpy(msg.pose.pose.orientation)
+            self.vehicle_linear = [msg.twist.twist.linear.x,
+                                   msg.twist.twist.linear.y, 
+                                   msg.twist.twist.linear.z]
+            heading_change = np.hypot(msg.twist.twist.linear.x,
+                                      msg.twist.twist.linear.y)
         elif self.navigation_type==1:
-            heading_velocity = np.hypot(msg.linear_acceleration.x,
-                                        msg.linear_acceleration.y)
             self.vehicle_orientation = self.quaternion2rpy(msg.orientation)
-
-        # Maintain ring buffer to compute heading velocity
-        if len(self.velocity_buffer) > 50:
-            self.velocity_buffer.popleft()
-        self.velocity_buffer.append(heading_velocity)
-
-        self.heading_velocity = np.mean(self.velocity_buffer)
+            self.vehicle_linear = [msg.linear_acceleration.x,
+                                   msg.linear_acceleration.y,
+                                   msg.linear_acceleration.z]
+            heading_change = np.hypot(msg.linear_acceleration.x,
+                                      msg.linear_acceleration.y)
+                        
+        # Maintain ring buffer to compute heading change
+        if len(self.heading_buffer) > 50:
+            self.heading_buffer.popleft()
+        self.heading_buffer.append(heading_change)
+        self.heading_change = np.mean(self.heading_buffer)
 
     def vehicle_state_callback(self, vehicle_state):
         """Callback function for vehicle_state topic subscriber."""
@@ -442,7 +451,7 @@ class Controller(Node):
             self.get_logger().info('Disarmed')
 
     def rc_control_mission(self):
-        """Valid flight modes: MANUAL, STABILITY, ALT_HOLD"""
+        """Valid flight modes: MANUAL, STABILIZE, ALT_HOLD"""
         mission_altitude = self.vehicle_position[2]
 
         self.get_logger().info('Engaging MANUAL mode')
