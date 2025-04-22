@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 
-from mavros_msgs.srv import SetMode, CommandBool, CommandHome, CommandTOL
+from mavros_msgs.srv import CommandHome, CommandTOL
 from tf_transformations import euler_from_quaternion
 from rcl_interfaces.msg import ParameterDescriptor
 from mavros_msgs.msg import State, OverrideRCIn
@@ -14,6 +14,7 @@ import rclpy
 
 import numpy as np
 from collections import deque
+from .utils import *
 
 _egm96 = GeoidPGM('/usr/share/GeographicLib/geoids/egm96-5.pgm', kind=-3)
 
@@ -62,8 +63,6 @@ class Controller(Node):
         # Initialize variables
         self.vehicle_orientation = None
         self.vehicle_state = State()
-        self.arm_request = CommandBool.Request()
-        self.set_mode_request = SetMode.Request()
         self.vehicle_position = np.array([0., 0., 0.])
         self.vehicle_linear = np.array([0., 0., 0.])
         self.heading_change = 0.01
@@ -108,15 +107,8 @@ class Controller(Node):
                 OverrideRCIn, 'mavros/rc/override', STATE_QOS)
         
         # Create service clients
-        self.set_mode_client = self.create_client(SetMode, 'mavros/set_mode')
-        while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Set mode service not available, waiting again...')
-        self.get_logger().info('Set mode service available')
-
-        self.arm_client = self.create_client(CommandBool, 'mavros/cmd/arming')
-        while not self.arm_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Arming service not available, waiting again...')
-        self.get_logger().info('Arming service available')
+        self.arm_client = ArmingServiceClient()
+        self.set_mode_client = SetModeServiceClient()
 
         # Wait to get the state of the vehicle
         rclpy.spin_once(self, timeout_sec=5.0)
@@ -210,34 +202,15 @@ class Controller(Node):
         offset = _egm96.height(self.vehicle_position[0], self.vehicle_position[1])
         self.vehicle_position[2] = msg.altitude-offset
 
-    def arm(self, state=True, timeout=30):
+    def arm(self, state=True, timeout_sec=30):
         """Arm/Disarm the vehicle"""
-        self.arm_request.value = state
-        if state:
-            str_state = 'Arm'
-        else:
-            str_state = 'Disarm'
-        
-        start_time = self.get_clock().now().to_msg().sec
-        last_request = start_time-6.0
-        while self.vehicle_state.armed != state:
-            # Send the command only once every 5 seconds
-            if self.get_clock().now().to_msg().sec - last_request < 5.0:
-                rclpy.spin_once(self, timeout_sec=1.0)
-                continue
-
-            future = self.arm_client.call_async(self.arm_request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout)
-
-            # Timeout for retry
-            last_request = self.get_clock().now().to_msg().sec
-            if self.vehicle_state.armed != state and \
-                last_request - start_time > timeout:
-               
-                self.get_logger().info(f'Timeout: Failed to {str_state}')
-                return False
-
-        return True
+        return self.arm_client.arm(state, timeout_sec)
+    
+    def set_mode(self, mode=True, timeout_sec=30):
+        """Set the vehicle mode
+        Valid flight modes: MANUAL, STABILIZE, ALT_HOLD
+        """
+        return self.set_mode_client.set_mode(mode, timeout_sec)
     
     def tol_command(self, altitude=20.0, timeout=30, time_lim=900):
         """Take Off/Land the vehicle to the given height
@@ -281,31 +254,6 @@ class Controller(Node):
         else: 
             self.get_logger().info(f'COMMAND_ACK: Failed to {str_state}')
             return False
-
-    def engage_mode(self, mode="GUIDED", timeout=30):
-        """Set the vehicle mode"""
-        self.set_mode_request.custom_mode = mode
-        
-        start_time = self.get_clock().now().to_msg().sec
-        last_request = start_time-6.0
-        while self.vehicle_state.mode != mode:
-            # Send the command only once every 5 seconds
-            if self.get_clock().now().to_msg().sec - last_request < 5.0:
-                rclpy.spin_once(self, timeout_sec=1.0)
-                continue
-
-            future = self.set_mode_client.call_async(self.set_mode_request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout)
-
-            # Timeout for retry
-            last_request = self.get_clock().now().to_msg().sec
-            if self.vehicle_state.mode != mode and \
-                last_request - start_time > timeout:
-               
-                self.get_logger().info(f'Timeout: Failed to engage {mode} mode')
-                return False
-
-        return True
     
     def set_home(self, latitude, longitude, altitude=None, timeout=900):
         """Set the home position"""
@@ -407,7 +355,7 @@ class Controller(Node):
         mission_altitude = self.vehicle_position[2]
 
         self.get_logger().info('Engaging GUIDED mode')
-        if self.engage_mode('GUIDED'):
+        if self.set_mode('GUIDED'):
             self.get_logger().info('GUIDED mode Engaged')
 
         self.get_logger().info('Arming')
@@ -457,7 +405,7 @@ class Controller(Node):
 
         self.get_logger().info('Engaging MANUAL mode')
         # ArduSub internally used ALT_HOLD for DEPTH_HOLD
-        if self.engage_mode('MANUAL'):
+        if self.set_mode('MANUAL'):
             self.get_logger().info('MANUAL mode Engaged')
 
         self.get_logger().info('Arming')
@@ -515,12 +463,11 @@ class Controller(Node):
         if self.arm(False):
             self.get_logger().info('Disarmed')
 
+
 def main(args=None):
     rclpy.init(args=args)
-
     node = Controller()
     rclpy.spin_once(node)
-
 
 if __name__ == '__main__':
     main()
