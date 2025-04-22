@@ -21,6 +21,7 @@ _egm96 = GeoidPGM('/usr/share/GeographicLib/geoids/egm96-5.pgm', kind=-3)
 class Controller(Node):
 
     def __init__(self,
+                 node_name='mavros_controller',
                  xy_tolerance=0.7,
                  z_tolerance=0.3,
                  use_altitude=False,
@@ -29,7 +30,7 @@ class Controller(Node):
         '''
         MAVROS waypoint path follower
         '''
-        super().__init__('mavros_controller')
+        super().__init__(node_name)
         self.get_logger().info('Initializing')
 
         # Declare and get parameters
