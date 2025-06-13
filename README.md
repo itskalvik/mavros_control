@@ -38,6 +38,3 @@ The launch file has the following paramerets:
   If ```0```: Use global position based navigation (assumes access to GPS)
   
   If ```1```: Use raw rc controls for navigation
-
-## FAQ
-To control the vehicle using RC-control, please ensure that the ```SYSID_MYGCS``` parameter is set to ```1``` using a ground control software such as [QGroundControl](https://qgroundcontrol.com/). Note that once the ```SYSID_MYGCS``` is cnahged, you won't be able to control the vehicle using QGC anymore until you reset the parameter to its default value: ```255```.
