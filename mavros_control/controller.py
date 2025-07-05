@@ -5,10 +5,10 @@ from tf_transformations import euler_from_quaternion
 from rcl_interfaces.msg import ParameterDescriptor
 from mavros_msgs.msg import State, OverrideRCIn
 from geographic_msgs.msg import GeoPoseStamped
+from std_msgs.msg import Float32MultiArray
+from sensor_msgs.msg import NavSatFix, Imu
 from pygeodesy.geoids import GeoidPGM
-from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import Imu
 from rclpy.node import Node
 import rclpy
 
@@ -102,6 +102,8 @@ class Controller(Node):
         if self.navigation_type==0: # Global navigation
             self.setpoint_position_publisher = self.create_publisher(
                 GeoPoseStamped, 'mavros/setpoint_position/global', SENSOR_QOS)
+            self.eta_publisher = self.create_publisher(
+                Float32MultiArray, 'mavros/waypoint_eta', SENSOR_QOS)
         elif self.navigation_type==1: # RC control
             self.rc_override_publisher = self.create_publisher(
                 OverrideRCIn, 'mavros/rc/override', STATE_QOS)
@@ -298,6 +300,10 @@ class Controller(Node):
         while not self.at_waypoint(waypoint):
             # Send the command only once every 5 seconds
             if self.get_clock().now().to_msg().sec - last_request < 5.0:
+                dist = self.haversine(self.vehicle_position[:2].reshape(1, -1), 
+                                      np.array(waypoint[:2]).reshape(1, -1))[0]
+                eta = dist/self.heading_change
+                self.eta_publisher.publish(Float32MultiArray(data=[eta, dist, self.heading_change]))
                 rclpy.spin_once(self, timeout_sec=1.0)
                 continue
 
