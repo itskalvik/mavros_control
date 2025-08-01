@@ -29,8 +29,9 @@ class BatteryMonitorNode(Node):
         if sum(self.volt_buffer)/5.0 < 12.0:
             self.get_logger().warn("VOLTAGE READING BELOW 12, CHARGE SOON")
         pass
-
-def main():
+    
+def main(args=None):
+    rclpy.init(args=args)
     node = BatteryMonitorNode()
     rclpy.spin_once(node)
 
