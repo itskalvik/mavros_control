@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'controller = mavros_control.controller:main',
+            'battery_monitor = mavros_control.battery_monitor:main',
         ],
     },
 )
