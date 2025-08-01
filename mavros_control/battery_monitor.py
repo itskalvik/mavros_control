@@ -33,10 +33,11 @@ class BatteryMonitorNode(Node):
         self.volt_buffer.append(self.volts)
         if len(self.volt_buffer) > 5:
             self.volt_buffer.pop(0)
-        if sum(self.volt_buffer)/5.0 < 12.5:
-            self.get_logger().warn("VOLTAGE READING BELOW 12.5, CHARGE SOON")
-        else:
-            self.get_logger().info("Average voltage reading nominal")
+        if len(self.volt_buffer) >= 5:    
+            if sum(self.volt_buffer)/5.0 < 12.5:
+                self.get_logger().warn("VOLTAGE READING BELOW 12.5, CHARGE SOON")
+            else:
+                self.get_logger().info("Average voltage reading nominal")
 
 def main(args=None):
     rclpy.init(args=args)
