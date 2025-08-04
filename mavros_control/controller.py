@@ -324,7 +324,7 @@ class Controller(Node):
         # Function to map input range to output range
         return round((x - inmin) * (outmax - outmin) / (inmax - inmin) + outmin)
     
-    def pub_rc_override(self, cmd, timeout=0.01):
+    def pub_rc_override(self, cmd, timeout=0.0):
         """
         Publishes rc messages, assumes MANUAL/STABILIZE/ALT_HOLD mode and armed
 
