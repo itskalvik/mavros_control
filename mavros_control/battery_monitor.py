@@ -15,7 +15,7 @@ class BatteryMonitorNode(Node):
         # TODO make voltage threshold a ROS parameter
 
         self.volt_subscriber = self.create_subscription(BatteryState, '/mavros/battery', self.battery_callback, SENSOR_QOS)
-        self.timer = self.create_timer(30,self.reading_callback)
+        self.timer = self.create_timer(1,self.reading_callback)
     
     def battery_callback(self, msg: BatteryState):
         # get necessary information from battery topic
@@ -28,14 +28,15 @@ class BatteryMonitorNode(Node):
         # TODO: in the future check discharge curve for different current draws
 
         # Debug line, replace later
-        self.get_logger().info(f"calculating average voltage... readings: {self.volt_buffer}")
-        
-        self.volt_buffer.append(self.volts)
+        self.get_logger().info(f"calculating average voltage at 0.8 A readings: {self.volt_buffer}")
+
+        if abs(abs(self.current) - 0.8) < 0.1:
+            self.volt_buffer.append(self.volts)
         if len(self.volt_buffer) > 5:
             self.volt_buffer.pop(0)
         if len(self.volt_buffer) >= 5:    
-            if sum(self.volt_buffer)/5.0 < 12.5:
-                self.get_logger().warn("VOLTAGE READING BELOW 12.5, CHARGE SOON")
+            if sum(self.volt_buffer)/5.0 <= 14.9:
+                self.get_logger().warn("VOLTAGE READING BELOW NOMINAL, CHARGE SOON")
             else:
                 self.get_logger().info("Average voltage reading nominal")
 
