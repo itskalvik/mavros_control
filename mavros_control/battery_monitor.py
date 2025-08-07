@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rcl_interfaces.msg import ParameterDescriptor
 
 from sensor_msgs.msg import BatteryState
 
@@ -12,10 +13,18 @@ class BatteryMonitorNode(Node):
 
         SENSOR_QOS = rclpy.qos.qos_profile_sensor_data
 
-        # TODO make voltage threshold a ROS parameter
+
+        # Declaring threshold parameters with default values
+        description = ParameterDescriptor(type =ParameterDescriptor.PARAMETER_DOUBLE, description="Voltage threshold for battery warning")
+        self.declare_parameter('voltage_threshold', 14.9, description)  # Default threshold, can be changed via ROS parameter
+        self.get_logger().info(f"Voltage threshold set to {self.get_parameter('voltage_threshold').get_parameter_value().double_value}")
+
+        description = ParameterDescriptor(type =ParameterDescriptor.PARAMETER_DOUBLE, description="Current threshold for battery warning")
+        self.declare_parameter('current_threshold', 0.8, description)  # Default current threshold, can be changed via ROS parameter
+        self.get_logger().info(f"Current threshold set to {self.get_parameter('current_threshold').get_parameter_value().double_value}")
 
         self.volt_subscriber = self.create_subscription(BatteryState, '/mavros/battery', self.battery_callback, SENSOR_QOS)
-        self.timer = self.create_timer(1,self.reading_callback)
+        self.timer = self.create_timer(0.1,self.reading_callback)
     
     def battery_callback(self, msg: BatteryState):
         # get necessary information from battery topic
@@ -30,12 +39,15 @@ class BatteryMonitorNode(Node):
         # Debug line, replace later
         self.get_logger().info(f"calculating average voltage at 0.8 A readings: {self.volt_buffer}")
 
-        if abs(abs(self.current) - 0.8) < 0.1:
+        voltage_threshold = self.get_parameter('voltage_threshold').get_parameter_value().double_value
+        current_threshold = self.get_parameter('current_threshold').get_parameter_value().double_value
+
+        if abs(abs(self.current) - current_threshold) < 0.1:
             self.volt_buffer.append(self.volts)
         if len(self.volt_buffer) > 5:
             self.volt_buffer.pop(0)
         if len(self.volt_buffer) >= 5:    
-            if sum(self.volt_buffer)/5.0 <= 14.9:
+            if sum(self.volt_buffer)/5.0 <= voltage_threshold:
                 self.get_logger().warn("VOLTAGE READING BELOW NOMINAL, CHARGE SOON")
             else:
                 self.get_logger().info("Average voltage reading nominal")
