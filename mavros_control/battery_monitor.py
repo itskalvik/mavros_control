@@ -15,11 +15,11 @@ class BatteryMonitorNode(Node):
 
 
         # Declaring threshold parameters with default values
-        description = ParameterDescriptor(type =ParameterDescriptor.PARAMETER_DOUBLE, description="Voltage threshold for battery warning")
+        description = ParameterDescriptor(description="Voltage threshold for battery warning")
         self.declare_parameter('voltage_threshold', 14.8, description)  # Default threshold, can be changed via ROS parameter
         self.get_logger().info(f"Voltage threshold set to {self.get_parameter('voltage_threshold').get_parameter_value().double_value}")
 
-        description = ParameterDescriptor(type =ParameterDescriptor.PARAMETER_DOUBLE, description="Current threshold for battery warning")
+        description = ParameterDescriptor(description="Current threshold for battery warning")
         self.declare_parameter('current_threshold', 0.8, description)  # Default current threshold, can be changed via ROS parameter
         self.get_logger().info(f"Current threshold set to {self.get_parameter('current_threshold').get_parameter_value().double_value}")
 
@@ -34,14 +34,14 @@ class BatteryMonitorNode(Node):
     def reading_callback(self):
 
         # TODO: in the future check discharge curve for different current draws
+        # TODO: use discharge graph to take in voltage and current and get what the voltage would be at 0A
 
-        # Debug line, replace later
-        self.get_logger().info(f"calculating average voltage at 0.8 A readings: {self.volt_buffer}")
-
-        voltage_threshold = (-0.0285*self.current + 3.73)
+        voltage_threshold = (-0.0285*(abs(self.current)) + 3.73) * 4
 
         if self.volts < voltage_threshold:
-            self.get_logger().warn(f"Voltage below threshold: {self.volts} V < {voltage_threshold} V")
+            self.get_logger().warn(f"Voltage below threshold at {self.current} A: {self.volts} V < {voltage_threshold} V")
+        else:
+            self.get_logger().info(f"Voltage nominal: {self.volts}V at {abs(self.current)}A with voltage threshold {voltage_threshold} V")
 
         
 
@@ -52,3 +52,4 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
