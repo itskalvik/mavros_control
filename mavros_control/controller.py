@@ -338,13 +338,13 @@ class Controller(Node):
         # Forward
         self.rc_override.channels[4] = self.normalize(cmd[0])
         # Lateral
-        self.rc_override.channels[5] = -self.normalize(cmd[1])
+        self.rc_override.channels[5] = self.normalize(-cmd[1])
         # Throttle (Up/Down)
         self.rc_override.channels[2] = self.normalize(cmd[2])
         # Roll
         self.rc_override.channels[1] = self.normalize(cmd[3])
         # Pitch
-        self.rc_override.channels[0] = -self.normalize(cmd[4])
+        self.rc_override.channels[0] = self.normalize(-cmd[4])
         # Yaw
         self.rc_override.channels[3] = self.normalize(cmd[5])
 
