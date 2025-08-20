@@ -324,7 +324,7 @@ class Controller(Node):
         # Function to map input range to output range
         return round((x - inmin) * (outmax - outmin) / (inmax - inmin) + outmin)
     
-    def pub_rc_override(self, cmd, timeout=0.0):
+    def pub_rc_override(self, cmd, timeout=0.0, publisher_period_sec=0.03):
         """
         Publishes rc messages, assumes MANUAL/STABILIZE/ALT_HOLD mode and armed
 
@@ -332,18 +332,19 @@ class Controller(Node):
             cmd (list): [Forward, Lateral, Throttle (Up/Down), Roll, Pitch, Yaw];
                         Input range: [-1.0, 1.0]
             timeout (double): Amount of time in seconds to publish the command message
+            publisher_period_sec (double): The period (s) of the publisher when timeout > 0
         """
 
         # Forward
         self.rc_override.channels[4] = self.normalize(cmd[0])
         # Lateral
-        self.rc_override.channels[5] = self.normalize(cmd[1])
+        self.rc_override.channels[5] = -self.normalize(cmd[1])
         # Throttle (Up/Down)
         self.rc_override.channels[2] = self.normalize(cmd[2])
         # Roll
         self.rc_override.channels[1] = self.normalize(cmd[3])
         # Pitch
-        self.rc_override.channels[0] = self.normalize(cmd[4])
+        self.rc_override.channels[0] = -self.normalize(cmd[4])
         # Yaw
         self.rc_override.channels[3] = self.normalize(cmd[5])
 
@@ -354,7 +355,7 @@ class Controller(Node):
         self.rc_override_publisher.publish(self.rc_override)
         start_time = self.get_clock().now().to_msg().sec
         while self.get_clock().now().to_msg().sec - start_time < timeout:
-            rclpy.spin_once(self, timeout_sec=0.01)
+            rclpy.spin_once(self, timeout_sec=publisher_period_sec)
             self.rc_override_publisher.publish(self.rc_override)
 
         return True
