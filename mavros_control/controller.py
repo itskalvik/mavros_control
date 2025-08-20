@@ -322,6 +322,7 @@ class Controller(Node):
 
     def normalize(self, x, inmin=-1, inmax=1, outmin=1100, outmax=1900):
         # Function to map input range to output range
+        x = np.clip(x, inmin, inmax) # Sanity check
         return round((x - inmin) * (outmax - outmin) / (inmax - inmin) + outmin)
     
     def pub_rc_override(self, cmd, timeout=0.0, publisher_period_sec=0.03):
@@ -335,18 +336,18 @@ class Controller(Node):
             publisher_period_sec (double): The period (s) of the publisher when timeout > 0
         """
 
-        # Forward
+        # Forward (+ve -> Move Forward)
         self.rc_override.channels[4] = self.normalize(cmd[0])
-        # Lateral
-        self.rc_override.channels[5] = self.normalize(-cmd[1])
-        # Throttle (Up/Down)
+        # Lateral (+ve -> Move Right)
+        self.rc_override.channels[5] = self.normalize(cmd[1])
+        # Throttle (Up/Down; +ve -> Move Up)
         self.rc_override.channels[2] = self.normalize(cmd[2])
-        # Roll
+        # Roll (+ve -> Roll right)
         self.rc_override.channels[1] = self.normalize(cmd[3])
-        # Pitch
-        self.rc_override.channels[0] = self.normalize(-cmd[4])
-        # Yaw
-        self.rc_override.channels[3] = self.normalize(-cmd[5])
+        # Pitch (+ve -> Pitch Up)
+        self.rc_override.channels[0] = self.normalize(cmd[4])
+        # Yaw (+ve -> Yaw Right)
+        self.rc_override.channels[3] = self.normalize(cmd[5])
 
         if len(cmd) > 6:
             self.rc_override.channels[6:] = cmd[6:]
