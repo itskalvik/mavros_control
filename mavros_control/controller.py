@@ -346,7 +346,7 @@ class Controller(Node):
         # Pitch
         self.rc_override.channels[0] = self.normalize(-cmd[4])
         # Yaw
-        self.rc_override.channels[3] = self.normalize(cmd[5])
+        self.rc_override.channels[3] = self.normalize(-cmd[5])
 
         if len(cmd) > 6:
             self.rc_override.channels[6:] = cmd[6:]
