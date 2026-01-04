@@ -103,7 +103,7 @@ class Controller(Node):
             self.setpoint_position_publisher = self.create_publisher(
                 GeoPoseStamped, 'mavros/setpoint_position/global', SENSOR_QOS)
             self.eta_publisher = self.create_publisher(
-                Float32MultiArray, 'mavros/waypoint_eta', SENSOR_QOS)
+                Float32MultiArray, 'waypoint_eta', SENSOR_QOS)
         elif self.navigation_type==1: # RC control
             self.rc_override_publisher = self.create_publisher(
                 OverrideRCIn, 'mavros/rc/override', STATE_QOS)
